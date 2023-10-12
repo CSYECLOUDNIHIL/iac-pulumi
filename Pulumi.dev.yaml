@@ -1,0 +1,6 @@
+encryptionsalt: v1:ruaHaKMdGwU=:v1:gtEttHze0pzDza3o:S0y7mRehdU/VpDki0tRcrp1WFVWDAA==
+config:
+  app:VPCCidrBlock: 10.0.0.0/16
+  app:destinationCidrBlock: 0.0.0.0/0
+  aws:profile: dev
+  aws:region: us-east-1
