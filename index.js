@@ -219,7 +219,7 @@ async function main() {
     }));
 
 
-/*   const rdsInstance = new aws.rds.Instance("rds-instance", {
+  const rdsInstance = new aws.rds.Instance("rds-instance", {
         vpcId: vpc.id,
         engine: engine, 
         engineVersion: engineVersion, 
@@ -237,7 +237,7 @@ async function main() {
         parameterGroupName: rdsParameterGroup.name, 
         multiAz: false
     },{ dependsOn: [dbSubnetGroup, databaseSecurityGroup, rdsParameterGroup] });
- */
+
     
     
 
@@ -265,7 +265,7 @@ async function main() {
         cd /opt/csye6225/
         touch .env
         echo "DB_DIALECT=${engine}" | sudo tee -a /home/admin/webapp-main/.env
-        
+        echo "DB_PORT=${port}" | sudo tee -a /opt/csye6225/.env
         echo "DB_PORT=${port}" | sudo tee -a /opt/csye6225/.env
         echo "DB_USERNAME=${databaseUsername}" | sudo tee -a /opt/csye6225/.env
         echo "DB_PASSWORD=${dataPassword}" | sudo tee -a /opt/csye6225/.env
