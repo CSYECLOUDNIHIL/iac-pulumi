@@ -3,11 +3,29 @@ const pulumi = require("@pulumi/pulumi");
 const aws = require("@pulumi/aws");
 const config=  new pulumi.Config("app");
 let publicSubnet = [];
+let privateSubnet = [];
 const ip = config.get("VPCCidrBlock");
 const nodePort = config.get("nodePort");
 const instanceType = config.get("instanceType");
 const ownerId = config.get("ownerId");
 const keyPairName = config.get("keyPairName");
+const allocatedStorage = config.get("allocatedstorage");
+const databaseName = config.get("databasename");
+const databaseUsername = config.get("databaseusername");
+const engine = config.get("engine");
+const port = config.get("port");
+const engineVersion = config.get("engineversion");
+const instancetype = config.get("instanceType");
+const instanceClass = config.get("instanceclass");
+const storageType = config.get("storagetype");
+const postgrefamily = config.get("family");
+const destinationCidrBlock = config.get("destinationCidrBlock");
+const csvLocation = config.get("csvLocation");
+
+const secretConfig = new pulumi.Config("iac_pulumi");
+const dataPassword = secretConfig.getSecret("dataPassword");
+
+
 
 const ipsplit = ip.split('/');
 const networkPart = ipsplit[0].split('.');
@@ -15,27 +33,22 @@ const subnetMask = ipsplit[1];
 
 
 async function main() {
-    // Create a new VPC
-
-    const keyPair = new aws.ec2.KeyPair("instance-keypair", {
-        publicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDHTQsVbcyHz7bYNS7Vytvy41lInyP8/jJIkLhSn6POc/wwmySloLkXzP7b5RKQmO7gZXaBV1gEaX/k5j9K0Nw6s32IMJmmpOlNUnEXPjChMWe7V1HI5jZIgKYL7mOoadbfB2A04aOZZNnK3dDGU65QJkcd7gfIDUBIyuJNpoeXvm/mfqHW1ViKbo79I42Ma9KkSgQ9NoIG9/cNmqfJbCO1G/K19cnjl6QbQeuuz4DhAk4LrZdLgYuSg+j4KWE69BmX3iaCSX/EoZ8v4+qCPmEbwYxn/Mf3F46bfN+iomYNed8TNtu5v315IvqbaurWlbJIuat4P1PgwhGCDcmF/+RJT/4yZt1n7A7XfprEDQrS0Xp5Vn5mUrS6CD000xTdDtg8XDO0NkExovi6MrGOlMejNgnk/JDt26LPkAnOuo423Rvyt0NCninEklaaug1+xzZPWxG28JVrpt9I8QxNRWvOw4UVhINH90mth93owBmMYBVVxmZ7cCqiSxSENxv9DK0= nihil@Nihil"
-    });
 
     
     const vpc = new aws.ec2.Vpc("webappVPC", {
-        cidrBlock:config.get("VPCCidrBlock") // Define the IP address range for this VPC.
+        cidrBlock:config.get("VPCCidrBlock") 
     });
 
-    // Create an internet gateway and attach it to the VPC
+
     const internetGateway = new aws.ec2.InternetGateway("webappInternetGateway", {
-        vpcId: vpc.id, // Attach this internet gateway to the previously created VPC.
+        vpcId: vpc.id, 
         tags: {
             Name: `InternetGateway`,
             Type: "public",
           },
     });
 
-    // Create public Route Table
+
     const publicRouteTable = new aws.ec2.RouteTable("publicRouteTable", {
         vpcId: vpc.id,
         tags: {
@@ -44,7 +57,6 @@ async function main() {
           },
     });
 
-    // Create private Route Table
     const privateRouteTable = new aws.ec2.RouteTable("privateRouteTable", {
         vpcId: vpc.id,
         tags: {
@@ -82,7 +94,7 @@ async function main() {
             routeTableId: publicRouteTable.id,
         });
 
-        return publicSubnet.id;
+        return publicSubnet;
     }
 
     const privateSubnetFunction = async (i,counter,az) => {
@@ -100,6 +112,7 @@ async function main() {
             subnetId: privateSubnet.id,
             routeTableId: privateRouteTable.id,
         });
+        return privateSubnet;
     }
 
     const azs = await aws.getAvailabilityZones({ state: "available" });
@@ -109,85 +122,181 @@ async function main() {
     }
     
     let counter = 1;
-    console.log(azs.names.length);
+
+    
     for (let i = 0; i < azs.names.length && i < 3 ; i++) {
-        // Create public and private subnets for each AZ
+
         const az = azs.names[i];
     
-        publicSubnet = await publicSubnetFunction(i,counter,az);
-    
-        const privateSubnet = await privateSubnetFunction(i,counter,az);
-    
-        counter += 2; // Increment the counter to create the next CIDR block for subnets
+        let publicSubnetId = await publicSubnetFunction(i,counter,az);
+        publicSubnet.push(publicSubnetId);
+        let privateSubnetId = await privateSubnetFunction(i,counter,az);
+        privateSubnet.push(privateSubnetId);
+        counter += 2; 
     }
 
     
 
-    const securityGroup = new aws.ec2.SecurityGroup("security-group", {
+    const ec2SecurityGroup = new aws.ec2.SecurityGroup("security-group", {
         vpcId: vpc.id,
         ingress: [
             {
-                cidrBlocks: ["0.0.0.0/0"],
-                protocol: "tcp",
-                fromPort: 22, // SSH
+                cidrBlocks: [destinationCidrBlock],
+                protocol: "TCP",
+                fromPort: 22,
                 toPort: 22,
             },
             {
-                cidrBlocks: ["0.0.0.0/0"],
-                protocol: "tcp",
-                fromPort: 80, // HTTP
+                cidrBlocks: [destinationCidrBlock],
+                protocol: "TCP",
+                fromPort: 80, 
                 toPort: 80,
             },
             {
-                cidrBlocks: ["0.0.0.0/0"],
-                protocol: "tcp",
-                fromPort: 443, // HTTPS
+                cidrBlocks: [destinationCidrBlock],
+                protocol: "TCP",
+                fromPort: 443, 
                 toPort: 443,
             },
             {
-                cidrBlocks: ["0.0.0.0/0"],
-                protocol: "tcp",
-                fromPort: nodePort, // Your application port
-                toPort: nodePort, // Your application port
+                cidrBlocks: [destinationCidrBlock],
+                protocol: "TCP",
+                fromPort: nodePort, 
+                toPort: nodePort, 
+            },
+        ],
+        egress: [
+            {
+                cidrBlocks: [destinationCidrBlock],
+                protocol: "TCP",
+                fromPort: port,
+                toPort: port,
             },
         ],
     });
 
+    const databaseSecurityGroup = new aws.ec2.SecurityGroup("rds-security-group", {
+        vpcId: vpc.id,
+        ingress: [
+            {
+                cidrBlocks: [destinationCidrBlock],
+                protocol: "TCP",
+                fromPort: port,
+                toPort: port,
+                securityGroups: [ec2SecurityGroup.id],
+                
+            }
+        ],
+        egress: [
+            {
+                cidrBlocks: [destinationCidrBlock],
+                protocol: "-1",
+                fromPort: 0,
+                toPort: 0,
+            },
+        ],
+    },{ dependsOn: ec2SecurityGroup});
+
+
+    const rdsParameterGroup = new aws.rds.ParameterGroup("rds-parameter-group", {
+        family: postgrefamily,
+            parameters: [
+                {
+                    name: 'max_connections',
+                    value: '100',
+                    applyMethod: "pending-reboot",
+                },
+        ],
+    });
+
+    const dbSubnetGroup = new aws.rds.SubnetGroup("dbsubnetgroup", {
+        subnetIds: privateSubnet, 
+    });
 
     const ami = pulumi.output(aws.ec2.getAmi({
         owners: [ ownerId ],
         mostRecent: true,
     }));
 
-    const instance = new aws.ec2.Instance("instance", {
+
+  const rdsInstance = new aws.rds.Instance("rds-instance", {
+        vpcId: vpc.id,
+        engine: engine, 
+        engineVersion: engineVersion, 
+        instanceClass: instanceClass, 
+        allocatedStorage: allocatedStorage,
+        storageType: storageType,
+        identifier: databaseUsername,
+        dbName: databaseName,
+        username:databaseUsername,
+        password: dataPassword, 
+        publiclyAccessible: false,
+        skipFinalSnapshot: true, 
+        vpcSecurityGroupIds: [databaseSecurityGroup.id], 
+        dbSubnetGroupName: dbSubnetGroup.name, 
+        parameterGroupName: rdsParameterGroup.name, 
+        multiAz: false
+    },{ dependsOn: [dbSubnetGroup, databaseSecurityGroup, rdsParameterGroup] });
+
+    
+    
+
+
+
+
+
+    const ec2Instance = new aws.ec2.Instance("instance", {
+        dependsOn: [rdsInstance],
         ami: ami.id,
+        vpcId: vpc.id,
         instanceType: instanceType,
-        subnetId: publicSubnet,
+        subnetId: publicSubnet[0],
         associatePublicIpAddress: true,
         vpcSecurityGroupIds: [
-            securityGroup.id,
+            ec2SecurityGroup.id,
         ],
         tags: {
             Name: `instanceName`,
             Type: "public",
           },
         keyName: keyPairName, 
-        userData: `
-            #!/bin/bash
-            amazon-linux-extras install nginx1
-            amazon-linux-extras enable nginx
-            systemctl enable nginx
-            systemctl start nginx
-        `,
-    });
-
-
-
+        userData: pulumi.interpolate
+        `#!/bin/bash
+        cd /home/admin/webapp-main/
+        touch .env
+        echo "DB_DIALECT=${engine}" | sudo tee -a /home/admin/webapp-main/.env
+        echo "DB_HOST=${rdsInstance.address}" | sudo tee -a /home/admin/webapp-main/.env
+        echo "DB_PORT=${port}" | sudo tee -a /home/admin/webapp-main/.env
+        echo "DB_USERNAME=${databaseUsername}" | sudo tee -a /home/admin/webapp-main/.env
+        echo "DB_PASSWORD=${dataPassword}" | sudo tee -a /home/admin/webapp-main/.env
+        echo "DB_NAME_CREATED=${databaseName}" | sudo tee -a /home/admin/webapp-main/.env
+        echo "DB_NAME_DEFAULT=${databaseName}" | sudo tee -a /home/admin/webapp-main/.env
+        echo "DB_LOGGING=false" | sudo tee -a /home/admin/webapp-main/.env
+        echo "CSV_LOCATION=${csvLocation}" | sudo tee -a /home/admin/webapp-main/.env
+        echo "SERVER_PORT=${nodePort}" | sudo tee -a /home/admin/webapp-main/.env 
+        sudo systemctl daemon-reload
+        sudo systemctl enable my-service
+        sudo systemctl start my-service
+        `/* ) */,
+        
+    },{ dependsOn: [rdsInstance] });
+/*     echo "DB_DIALECT=${engine}" | sudo tee -a /home/admin/webapp-main/.env
+    echo "DB_HOST=${rdsEndpoint}" | sudo tee -a /home/admin/webapp-main/.env
+    echo "DB_PORT=${port}" | sudo tee -a /home/admin/webapp-main/.env
+    echo "DB_USERNAME=${databaseUsername}" | sudo tee -a /home/admin/webapp-main/.env
+    echo "DB_PASSWORD=${dataPassword}" | sudo tee -a /home/admin/webapp-main/.env
+    echo "DB_NAME_CREATED=${databaseName}" | sudo tee -a /home/admin/webapp-main/.env
+    echo "DB_NAME_DEFAULT=${databaseName}" | sudo tee -a /home/admin/webapp-main/.env
+    echo "DB_LOGGING=false" | sudo tee -a /home/admin/webapp-main/.env
+    echo "CSV_LOCATION=${databaseName}" | sudo tee -a /home/admin/webapp-main/.env
+    echo "SERVER_PORT=${nodePort}" | sudo tee -a /home/admin/webapp-main/.env */
 
     return {
         vpcId: vpc.id,
-        internetGatewayId: internetGateway.id,
-        instancePublicIp : instance.publicIp
+        internetGatewayId: internetGateway.id,        
+       // rdsInstanceId: rdsInstance.id,
+        ec2InstanceId: ec2Instance.id,
+        instancePublicIp : ec2Instance.publicIp,
     };
 }
 
