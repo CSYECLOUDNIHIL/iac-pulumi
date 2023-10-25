@@ -246,7 +246,7 @@ async function main() {
 
 
     const ec2Instance = new aws.ec2.Instance("instance", {
-        //dependsOn: [rdsInstance],
+        dependsOn: [rdsInstance],
         ami: ami.id,
         vpcId: vpc.id,
         instanceType: instanceType,
@@ -273,14 +273,15 @@ async function main() {
         echo "DB_NAME_DEFAULT=${databaseName}" | sudo tee -a /opt/csye6225/.env
         echo "DB_LOGGING=false" | sudo tee -a /opt/csye6225/.env
         echo "CSV_LOCATION=${csvLocation}" | sudo tee -a /opt/csye6225/.env
-        echo "SERVER_PORT=${nodePort}" | sudo tee -a /opt/csye6225/.env 
+        echo "SERVER_PORT=${nodePort}" | sudo tee -a /opt/csye6225/.env
         sudo systemctl daemon-reload
         sudo systemctl enable my-service
         sudo systemctl start my-service
         `/* ) */,
-        
-    }//,{ dependsOn: [rdsInstance] }
-    );
+    },{ dependsOn: [rdsInstance] });
+
+
+    
 /*     echo "DB_DIALECT=${engine}" | sudo tee -a /home/admin/webapp-main/.env
     echo "DB_HOST=${rdsEndpoint}" | sudo tee -a /home/admin/webapp-main/.env
     echo "DB_PORT=${port}" | sudo tee -a /home/admin/webapp-main/.env
