@@ -274,10 +274,11 @@ async function main() {
         echo "DB_LOGGING=false" | sudo tee -a /opt/csye6225/.env
         echo "CSV_LOCATION=${csvLocation}" | sudo tee -a /opt/csye6225/.env
         echo "SERVER_PORT=${nodePort}" | sudo tee -a /opt/csye6225/.env
-
         sudo systemctl daemon-reload
         sudo systemctl enable healthz-systemd
         sudo systemctl start healthz-systemd
+        sudo chown -R csye6225:csye6225 /opt/csye6225
+        sudo chmod -R 750 /opt/csye6225
         `/* ) */,
     },{ dependsOn: [rdsInstance] });
 
