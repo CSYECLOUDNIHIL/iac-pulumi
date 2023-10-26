@@ -263,10 +263,10 @@ async function main() {
         userData: pulumi.interpolate
         `#!/bin/bash
         cd /opt/csye6225/
-        touch .env
-        echo "DB_DIALECT=${engine}" | sudo tee -a /home/admin/webapp-main/.env
+        sudo touch .env
+        echo "DB_DIALECT=${engine}" | sudo tee -a /opt/csye6225/.env
         echo "DB_PORT=${port}" | sudo tee -a /opt/csye6225/.env
-        echo "DB_PORT=${port}" | sudo tee -a /opt/csye6225/.env
+        echo "DB_HOST=${rdsInstance.address}" | sudo tee -a /opt/csye6225/.env
         echo "DB_USERNAME=${databaseUsername}" | sudo tee -a /opt/csye6225/.env
         echo "DB_PASSWORD=${dataPassword}" | sudo tee -a /opt/csye6225/.env
         echo "DB_NAME_CREATED=${databaseName}" | sudo tee -a /opt/csye6225/.env
@@ -274,14 +274,15 @@ async function main() {
         echo "DB_LOGGING=false" | sudo tee -a /opt/csye6225/.env
         echo "CSV_LOCATION=${csvLocation}" | sudo tee -a /opt/csye6225/.env
         echo "SERVER_PORT=${nodePort}" | sudo tee -a /opt/csye6225/.env
+
         sudo systemctl daemon-reload
-        sudo systemctl enable my-service
-        sudo systemctl start my-service
+        sudo systemctl enable healthz-systemd
+        sudo systemctl start healthz-systemd
         `/* ) */,
     },{ dependsOn: [rdsInstance] });
 
 
-    
+
 /*     echo "DB_DIALECT=${engine}" | sudo tee -a /home/admin/webapp-main/.env
     echo "DB_HOST=${rdsEndpoint}" | sudo tee -a /home/admin/webapp-main/.env
     echo "DB_PORT=${port}" | sudo tee -a /home/admin/webapp-main/.env
