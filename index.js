@@ -21,12 +21,13 @@ const storageType = config.get("storagetype");
 const postgrefamily = config.get("family");
 const destinationCidrBlock = config.get("destinationCidrBlock");
 const csvLocation = config.get("csvLocation");
-
+const domainName = config.get("domainName");
 const secretConfig = new pulumi.Config("iac_pulumi");
 const dataPassword = secretConfig.getSecret("dataPassword");
+const awsregion = config.get("region");
+const statsDPort = config.get("statsDPort");
 
-
-
+const rolePolicy = config.get("rolePolicy");
 const ipsplit = ip.split('/');
 const networkPart = ipsplit[0].split('.');
 const subnetMask = ipsplit[1];
@@ -172,6 +173,12 @@ async function main() {
                 fromPort: port,
                 toPort: port,
             },
+            {
+                cidrBlocks: [destinationCidrBlock],
+                protocol: "-1",
+                fromPort: 0,
+                toPort: 0,
+            },
         ],
     });
 
@@ -179,7 +186,6 @@ async function main() {
         vpcId: vpc.id,
         ingress: [
             {
-                cidrBlocks: [destinationCidrBlock],
                 protocol: "TCP",
                 fromPort: port,
                 toPort: port,
@@ -238,12 +244,49 @@ async function main() {
         multiAz: false
     },{ dependsOn: [dbSubnetGroup, databaseSecurityGroup, rdsParameterGroup] });
 
+    const cloudWatchIamRole = new aws.iam.Role("CWIamRole", {
+        assumeRolePolicy: JSON.stringify({
+            Version: "2012-10-17",
+            Statement: [{
+                Action: "sts:AssumeRole",
+                Effect: "Allow",
+                Sid: "AssumeRolePolicy", 
+                Principal: {
+                    Service: "ec2.amazonaws.com",
+                },
+            }],
+        }),
+        tags: {
+            Name: `CWIamRole`,
+            Type: "public",
+          },
+    });
     
+/*     const customPolicy = new aws.iam.Policy("customPolicy", {
+        name: "CustomPolicyName", 
+        description: "Custom policy description",
+        policyArn: aws.iam.ManagedPolicy.IAMReadOnlyAccess,
+    },{ dependsOn: [testRole] }); */
     
 
+    const rolePolicyAttachment = new aws.iam.RolePolicyAttachment("policyAttachment", {
+        role: cloudWatchIamRole.name,
+        policyArn: rolePolicy,
+        tags: {
+            Name: `CWpolicyAttachment`,
+            Type: "public",
+          },
+    },{ dependsOn: [cloudWatchIamRole] });
+    
 
-
-
+    const ec2InstanceProfile = new aws.iam.InstanceProfile("ec2InstanceProfile", {
+        name: "ec2InstanceProfile",
+        role: cloudWatchIamRole.name, 
+        tags: {
+            Name: `CWec2InstanceProfile`,
+            Type: "public",
+          },
+    },{ dependsOn: [rolePolicyAttachment] });
 
     const ec2Instance = new aws.ec2.Instance("instance", {
         dependsOn: [rdsInstance],
@@ -252,11 +295,12 @@ async function main() {
         instanceType: instanceType,
         subnetId: publicSubnet[0],
         associatePublicIpAddress: true,
+        iamInstanceProfile: ec2InstanceProfile.name,
         vpcSecurityGroupIds: [
             ec2SecurityGroup.id,
         ],
         tags: {
-            Name: `instanceName`,
+            Name: `Ec2Instance`,
             Type: "public",
           },
         keyName: keyPairName, 
@@ -264,23 +308,34 @@ async function main() {
         `#!/bin/bash
         cd /opt/csye6225/
         sudo touch .env
-        echo "DB_DIALECT=${engine}" | sudo tee -a /opt/csye6225/.env
-        echo "DB_PORT=${port}" | sudo tee -a /opt/csye6225/.env
-        echo "DB_HOST=${rdsInstance.address}" | sudo tee -a /opt/csye6225/.env
-        echo "DB_USERNAME=${databaseUsername}" | sudo tee -a /opt/csye6225/.env
-        echo "DB_PASSWORD=${dataPassword}" | sudo tee -a /opt/csye6225/.env
-        echo "DB_NAME_CREATED=${databaseName}" | sudo tee -a /opt/csye6225/.env
-        echo "DB_NAME_DEFAULT=${databaseName}" | sudo tee -a /opt/csye6225/.env
-        echo "DB_LOGGING=false" | sudo tee -a /opt/csye6225/.env
-        echo "CSV_LOCATION=${csvLocation}" | sudo tee -a /opt/csye6225/.env
-        echo "SERVER_PORT=${nodePort}" | sudo tee -a /opt/csye6225/.env
+        sudo chown csye6225:csye6225 .env
+        sudo chmod 750 .env
+        echo "DB_DIALECT=${engine}" | sudo tee -a .env
+        echo "DB_NAME_PORT=${port}" | sudo tee -a .env
+        echo "DB_HOST=${rdsInstance.address}" | sudo tee -a .env
+        echo "DB_USERNAME=${databaseUsername}" | sudo tee -a .env
+        echo "DB_PASSWORD=${dataPassword}" | sudo tee -a .env
+        echo "DB_NAME_CREATED=${databaseName}" | sudo tee -a .env
+        echo "DB_NAME_DEFAULT=${databaseName}" | sudo tee -a .env
+        echo "DB_LOGGING=false" | sudo tee -a .env
+        echo "CSV_LOCATION=${csvLocation}" | sudo tee -a .env
+        echo "SERVER_PORT=${nodePort}" | sudo tee -a .env
+        echo "STATSD_PORT=${statsDPort}" | sudo tee -a .env
         sudo systemctl daemon-reload
         sudo systemctl enable healthz-systemd
         sudo systemctl start healthz-systemd
-        sudo chown -R csye6225:csye6225 /opt/csye6225
-        sudo chmod -R 750 /opt/csye6225
+        
+        sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+        -a fetch-config \
+        -m ec2 \
+        -c file:/opt/csye6225/packer/cloudwatch-config.json \
+        -s
+        sudo systemctl enable amazon-cloudwatch-agent
+        sudo systemctl start amazon-cloudwatch-agent
         `/* ) */,
-    },{ dependsOn: [rdsInstance] });
+    }
+    ,{ dependsOn: [rdsInstance,ec2InstanceProfile] }
+    );
 
 
 
@@ -295,11 +350,43 @@ async function main() {
     echo "CSV_LOCATION=${databaseName}" | sudo tee -a /home/admin/webapp-main/.env
     echo "SERVER_PORT=${nodePort}" | sudo tee -a /home/admin/webapp-main/.env */
 
+/*         const zonePromise = aws.route53.getZone({ name: "dev.nihiljosephpellissery.me" }, { async: true });
+
+        zonePromise.then(zone => {
+
+        const record = new aws.route53.Record("myRecord", {
+        zoneId: zone.zoneId,
+        name: "dev.nihiljosephpellissery.me",
+        type: "A",
+        ttl: 60,
+        records: [ec2Instance.publicIp],
+    }, { dependsOn: [ec2Instance] });  
+    }); */
+
+
+    const selected = aws.route53.getZone({
+        name: domainName,
+        privateZone: false,
+    });
+    const createRecord = new aws.route53.Record("createRecord", {
+        zoneId: selected.then(selected => selected.zoneId),
+        name: domainName,
+        type: "A",
+        ttl: 60,
+        records: [ec2Instance.publicIp],
+        tags: {
+            Name: `Route53`,
+            Type: "public",
+          },
+    }, { dependsOn: [ec2Instance] });
+
+
     return {
         vpcId: vpc.id,
         internetGatewayId: internetGateway.id,        
-       // rdsInstanceId: rdsInstance.id,
+        rdsInstanceId: rdsInstance.id,
         ec2InstanceId: ec2Instance.id,
+        createdRecord: createRecord.zoneId,
         instancePublicIp : ec2Instance.publicIp,
     };
 }
