@@ -14,10 +14,14 @@ config:
   app:instanceclass: db.t2.micro
   app:keyPairName: awsKey-us-east-1
   app:nodePort: "3001"
+  app:rolePolicy: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
   app:ownerId: "250820048302"
+  app:domainName: "dev.nihiljosephpellissery.me"
+  app:statsDPort: "8125"
   app:storagetype: gp2
   app:subnetMask: "24"
   app:port: "5432"
+  app:region: us-east-1
   aws:profile: dev
   aws:region: us-east-1
   iac_pulumi:app.databasename: healthz
