@@ -26,8 +26,8 @@ const secretConfig = new pulumi.Config("iac_pulumi");
 const dataPassword = secretConfig.getSecret("dataPassword");
 const awsregion = config.get("region");
 const statsDPort = config.get("statsDPort");
-
 const rolePolicy = config.get("rolePolicy");
+const subnetMaskVar = config.get("subnetMaskVar");
 const ipsplit = ip.split('/');
 const networkPart = ipsplit[0].split('.');
 const subnetMask = ipsplit[1];
@@ -80,7 +80,7 @@ async function main() {
 
     
     const publicSubnetFunction = async (i,counter,az) => {
-        const cidrBlock = `${networkPart[0]}.${networkPart[1]}.${parseInt(networkPart[2]) + counter}.${networkPart[3]}/24`
+        const cidrBlock = `${networkPart[0]}.${networkPart[1]}.${parseInt(networkPart[2]) + counter}.${networkPart[3]}/${subnetMaskVar}`
         const publicSubnet = new aws.ec2.Subnet(`publicSubnet${counter}`, {
             vpcId: vpc.id,
             availabilityZone: az,
@@ -99,7 +99,7 @@ async function main() {
     }
 
     const privateSubnetFunction = async (i,counter,az) => {
-        const cidrBlock = `${networkPart[0]}.${networkPart[1]}.${parseInt(networkPart[2]) + counter+1}.${networkPart[3]}/24`
+        const cidrBlock = `${networkPart[0]}.${networkPart[1]}.${parseInt(networkPart[2]) + counter+1}.${networkPart[3]}/${subnetMaskVar}`
         const privateSubnet = new aws.ec2.Subnet(`privateSubnet${counter}`, {
             vpcId: vpc.id,
             availabilityZone: az,

@@ -19,7 +19,7 @@ config:
   app:domainName: "dev.nihiljosephpellissery.me"
   app:statsDPort: "8125"
   app:storagetype: gp2
-  app:subnetMask: "24"
+  app:subnetMaskVar: "24"
   app:port: "5432"
   app:region: us-east-1
   aws:profile: dev
