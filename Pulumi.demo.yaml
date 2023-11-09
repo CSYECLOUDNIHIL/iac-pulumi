@@ -21,7 +21,7 @@ config:
   app:rolePolicy: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
   app:statsDPort: "8125"
   app:storagetype: gp2
-  app:subnetMask: "24"
+  app:subnetMaskVar: "24"
   aws:profile: demo
   aws:region: us-east-1
   iac_pulumi:app.databasename: healthz
