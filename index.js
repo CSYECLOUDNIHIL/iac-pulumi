@@ -136,18 +136,43 @@ async function main() {
         counter += 2; 
     }
 
-    
-
-    const ec2SecurityGroup = new aws.ec2.SecurityGroup("security-group", {
+    const loadSecurityGroup = new aws.ec2.SecurityGroup("loadSecurityGroup", {
         vpcId: vpc.id,
         ingress: [
             {
                 cidrBlocks: [destinationCidrBlock],
                 protocol: "TCP",
+                fromPort: 80, 
+                toPort: 80,
+            },
+            {
+                
+                cidrBlocks: [destinationCidrBlock],
+                protocol: "TCP",
+                fromPort: 443, 
+                toPort: 443,
+            },
+        ],
+        egress: [
+            {
+                cidrBlocks: [destinationCidrBlock],
+                protocol: "-1",
+                fromPort: 0,
+                toPort: 0,
+            }
+        ],
+    });
+
+    const ec2SecurityGroup = new aws.ec2.SecurityGroup("security-group", {
+        vpcId: vpc.id,
+        ingress: [
+            {
+                securityGroups: [loadSecurityGroup.id],
+                protocol: "TCP",
                 fromPort: 22,
                 toPort: 22,
             },
-            {
+/*             {
                 cidrBlocks: [destinationCidrBlock],
                 protocol: "TCP",
                 fromPort: 80, 
@@ -158,10 +183,10 @@ async function main() {
                 protocol: "TCP",
                 fromPort: 443, 
                 toPort: 443,
-            },
+            }, */
             {
-                cidrBlocks: [destinationCidrBlock],
-                protocol: "TCP",
+                securityGroups: [loadSecurityGroup.id],
+                  protocol: "TCP",
                 fromPort: nodePort, 
                 toPort: nodePort, 
             },
@@ -169,18 +194,15 @@ async function main() {
         egress: [
             {
                 cidrBlocks: [destinationCidrBlock],
-                protocol: "TCP",
-                fromPort: port,
-                toPort: port,
-            },
-            {
-                cidrBlocks: [destinationCidrBlock],
                 protocol: "-1",
                 fromPort: 0,
                 toPort: 0,
             },
         ],
-    });
+    },{ dependsOn: loadSecurityGroup});
+
+    
+
 
     const databaseSecurityGroup = new aws.ec2.SecurityGroup("rds-security-group", {
         vpcId: vpc.id,
@@ -224,26 +246,7 @@ async function main() {
         mostRecent: true,
     }));
 
-
-  const rdsInstance = new aws.rds.Instance("rds-instance", {
-        vpcId: vpc.id,
-        engine: engine, 
-        engineVersion: engineVersion, 
-        instanceClass: instanceClass, 
-        allocatedStorage: allocatedStorage,
-        storageType: storageType,
-        identifier: databaseUsername,
-        dbName: databaseName,
-        username:databaseUsername,
-        password: dataPassword, 
-        publiclyAccessible: false,
-        skipFinalSnapshot: true, 
-        vpcSecurityGroupIds: [databaseSecurityGroup.id], 
-        dbSubnetGroupName: dbSubnetGroup.name, 
-        parameterGroupName: rdsParameterGroup.name, 
-        multiAz: false
-    },{ dependsOn: [dbSubnetGroup, databaseSecurityGroup, rdsParameterGroup] });
-
+    
     const cloudWatchIamRole = new aws.iam.Role("CWIamRole", {
         assumeRolePolicy: JSON.stringify({
             Version: "2012-10-17",
@@ -261,12 +264,6 @@ async function main() {
             Type: "public",
           },
     });
-    
-/*     const customPolicy = new aws.iam.Policy("customPolicy", {
-        name: "CustomPolicyName", 
-        description: "Custom policy description",
-        policyArn: aws.iam.ManagedPolicy.IAMReadOnlyAccess,
-    },{ dependsOn: [testRole] }); */
     
 
     const rolePolicyAttachment = new aws.iam.RolePolicyAttachment("policyAttachment", {
@@ -288,106 +285,222 @@ async function main() {
           },
     },{ dependsOn: [rolePolicyAttachment] });
 
-    const ec2Instance = new aws.ec2.Instance("instance", {
-        dependsOn: [rdsInstance],
-        ami: ami.id,
+     const rdsInstance = new aws.rds.Instance("rds-instance", {
         vpcId: vpc.id,
+        engine: engine, 
+        engineVersion: engineVersion, 
+        instanceClass: instanceClass, 
+        allocatedStorage: allocatedStorage,
+        storageType: storageType,
+        identifier: databaseUsername,
+        dbName: databaseName,
+        username:databaseUsername,
+        password: dataPassword, 
+        publiclyAccessible: false,
+        skipFinalSnapshot: true, 
+        vpcSecurityGroupIds: [databaseSecurityGroup.id], 
+        dbSubnetGroupName: dbSubnetGroup.name, 
+        parameterGroupName: rdsParameterGroup.name, 
+        multiAz: false
+    },{ dependsOn: [dbSubnetGroup, databaseSecurityGroup, rdsParameterGroup] });
+
+    const userDataScript = pulumi.interpolate  
+    `#!/bin/bash
+    cd /opt/csye6225/
+    sudo touch .env
+    sudo chown csye6225:csye6225 .env
+    sudo chmod 750 .env
+    echo "DB_DIALECT=${engine}" | sudo tee -a .env
+    echo "DB_NAME_PORT=${port}" | sudo tee -a .env
+    echo "DB_HOST=${rdsInstance.address}" | sudo tee -a .env
+    echo "DB_USERNAME=${databaseUsername}" | sudo tee -a .env
+    echo "DB_PASSWORD=${dataPassword}" | sudo tee -a .env
+    echo "DB_NAME_CREATED=${databaseName}" | sudo tee -a .env
+    echo "DB_NAME_DEFAULT=${databaseName}" | sudo tee -a .env
+    echo "DB_LOGGING=false" | sudo tee -a .env
+    echo "CSV_LOCATION=${csvLocation}" | sudo tee -a .env
+    echo "SERVER_PORT=${nodePort}" | sudo tee -a .env
+    echo "STATSD_PORT=${statsDPort}" | sudo tee -a .env
+    sudo systemctl daemon-reload
+    sudo systemctl enable healthz-systemd
+    sudo systemctl start healthz-systemd
+    
+    sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+    -a fetch-config \
+    -m ec2 \
+    -c file:/opt/csye6225/packer/cloudwatch-config.json \
+    -s
+    sudo systemctl enable amazon-cloudwatch-agent
+    sudo systemctl start amazon-cloudwatch-agent
+    `
+    const ec2InstanceLaunchTemplate = new aws.ec2.LaunchTemplate("ec2InstanceLaunchTemplate", {
+        imageId: ami.id,
         instanceType: instanceType,
-        subnetId: publicSubnet[0],
-        associatePublicIpAddress: true,
-        iamInstanceProfile: ec2InstanceProfile.name,
-        vpcSecurityGroupIds: [
+        networkInterfaces: [{
+            associatePublicIpAddress: "true",
+            securityGroups: [ec2SecurityGroup.id],
+            deleteOnTermination: true
+        }],
+        iamInstanceProfile: { name: ec2InstanceProfile.name },
+/*         vpcSecurityGroupIds: [
             ec2SecurityGroup.id,
-        ],
-        tags: {
-            Name: `Ec2Instance`,
-            Type: "public",
-          },
+        ], */
+        tagSpecifications: [{
+            resourceType: "instance",
+            tags: {
+                Name: "Ec2Instance",
+            },
+        }],
         keyName: keyPairName, 
-        userData: pulumi.interpolate
-        `#!/bin/bash
-        cd /opt/csye6225/
-        sudo touch .env
-        sudo chown csye6225:csye6225 .env
-        sudo chmod 750 .env
-        echo "DB_DIALECT=${engine}" | sudo tee -a .env
-        echo "DB_NAME_PORT=${port}" | sudo tee -a .env
-        echo "DB_HOST=${rdsInstance.address}" | sudo tee -a .env
-        echo "DB_USERNAME=${databaseUsername}" | sudo tee -a .env
-        echo "DB_PASSWORD=${dataPassword}" | sudo tee -a .env
-        echo "DB_NAME_CREATED=${databaseName}" | sudo tee -a .env
-        echo "DB_NAME_DEFAULT=${databaseName}" | sudo tee -a .env
-        echo "DB_LOGGING=false" | sudo tee -a .env
-        echo "CSV_LOCATION=${csvLocation}" | sudo tee -a .env
-        echo "SERVER_PORT=${nodePort}" | sudo tee -a .env
-        echo "STATSD_PORT=${statsDPort}" | sudo tee -a .env
-        sudo systemctl daemon-reload
-        sudo systemctl enable healthz-systemd
-        sudo systemctl start healthz-systemd
+        userData: userDataScript.apply(script => Buffer.from(script).toString("base64")),
+    },{ dependsOn: [ec2InstanceProfile,rdsInstance] });
+
+    const loadBalancerTargetGroup = new aws.lb.TargetGroup("loadBalancerTargetGroup", {
+        port: nodePort,
+        protocol: "HTTP",
+        vpcId: vpc.id,
+        targetType: "instance",
+        associatePublicIpAddress: true,
+        healthCheck: {
+            path: "/healthz", 
+            port: nodePort,
+            protocol: "HTTP",
+            protocol: "HTTP",
+            timeout: 10,
+            unhealthyThreshold: 2,
+            healthyThreshold: 2,
+
+        },
+    },{dependsOn:ec2InstanceLaunchTemplate});
+
+    const ec2LoadBalancer = new aws.lb.LoadBalancer("ec2LoadBalancer", {
+        internal: false,
+        loadBalancerType: "application",
+        securityGroups: [loadSecurityGroup.id],
+        subnets: publicSubnet.map(subnet => (subnet.id)),
+        enableDeletionProtection: false,
+    },{dependsOn:loadBalancerTargetGroup,rdsInstance});
+
+
+
+
+    const listener = new aws.lb.Listener("loadBalancerListener", {
+        loadBalancerArn: ec2LoadBalancer.arn,
+        port: 80,
+        protocol: "HTTP",
+        defaultActions: [
+            {
+                type: "forward",
+                targetGroupArn: loadBalancerTargetGroup.arn,
+            },
+        ],
+    },{dependsOn:[loadBalancerTargetGroup,ec2LoadBalancer]});
+    
+
+
+    const autoScalingGroup = new aws.autoscaling.Group("autoScalingGroup", {
+        //availabilityZones: azs.names,
         
-        sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-        -a fetch-config \
-        -m ec2 \
-        -c file:/opt/csye6225/packer/cloudwatch-config.json \
-        -s
-        sudo systemctl enable amazon-cloudwatch-agent
-        sudo systemctl start amazon-cloudwatch-agent
-        `/* ) */,
-    }
-    ,{ dependsOn: [rdsInstance,ec2InstanceProfile] }
-    );
+        desiredCapacity: 1,
+        maxSize: 3,
+        minSize: 1,
+        healthCheckType: "EC2",
+        healthCheckGracePeriod: 300,
+        vpcZoneIdentifiers: publicSubnet.map(subnet => subnet.id),
+        forceDelete: true,
+        associatePublicIpAddress: true,
+        launchTemplate: {
+            id: ec2InstanceLaunchTemplate.id,
+            version: ec2InstanceLaunchTemplate.latestVersion,
+            
+        }
+        ,targetGroupArns: [loadBalancerTargetGroup.arn],
+        vpcId: vpc.id,
+    },{dependsOn:[listener]});
 
 
+    const autoScalingUp = new aws.autoscaling.Policy("autoScalingUp", {
+        scalingAdjustment: 1,
+        adjustmentType: "ChangeInCapacity",
+        cooldown: 60,
+        autoscalingGroupName: autoScalingGroup.name,
+        name: "scaleupPolicy",
+    },{dependsOn:autoScalingGroup});
 
-/*     echo "DB_DIALECT=${engine}" | sudo tee -a /home/admin/webapp-main/.env
-    echo "DB_HOST=${rdsEndpoint}" | sudo tee -a /home/admin/webapp-main/.env
-    echo "DB_PORT=${port}" | sudo tee -a /home/admin/webapp-main/.env
-    echo "DB_USERNAME=${databaseUsername}" | sudo tee -a /home/admin/webapp-main/.env
-    echo "DB_PASSWORD=${dataPassword}" | sudo tee -a /home/admin/webapp-main/.env
-    echo "DB_NAME_CREATED=${databaseName}" | sudo tee -a /home/admin/webapp-main/.env
-    echo "DB_NAME_DEFAULT=${databaseName}" | sudo tee -a /home/admin/webapp-main/.env
-    echo "DB_LOGGING=false" | sudo tee -a /home/admin/webapp-main/.env
-    echo "CSV_LOCATION=${databaseName}" | sudo tee -a /home/admin/webapp-main/.env
-    echo "SERVER_PORT=${nodePort}" | sudo tee -a /home/admin/webapp-main/.env */
+    const scalingUpcloudWatchMetricAlarm = new aws.cloudwatch.MetricAlarm("scalingUpcloudWatchMetricAlarm", {
+        comparisonOperator: "GreaterThanOrEqualToThreshold",
+        evaluationPeriods: 1,
+        metricName: "CPUUtilization",
+        namespace: "AWS/EC2",
+        period: 60,
+        statistic: "Average",
+        threshold: 5,
+        //treatMissingData: notBreaching,
+        dimensions: {
+            AutoScalingGroupName: autoScalingGroup.name,
+        },
+        alarmDescription: "ec2 cpu utilization",
+        alarmActions: [autoScalingUp.arn],
+    },{dependsOn:autoScalingUp});
 
-/*         const zonePromise = aws.route53.getZone({ name: "dev.nihiljosephpellissery.me" }, { async: true });
 
-        zonePromise.then(zone => {
+    const autoScalingDown = new aws.autoscaling.Policy("autoScalingDown", {
+        scalingAdjustment: -1,
+        adjustmentType: "ChangeInCapacity",
+        cooldown: 60,
+        autoscalingGroupName: autoScalingGroup.name,
+        name: "scaleDownPolicy",
+    },{dependsOn:autoScalingGroup});
 
-        const record = new aws.route53.Record("myRecord", {
-        zoneId: zone.zoneId,
-        name: "dev.nihiljosephpellissery.me",
-        type: "A",
-        ttl: 60,
-        records: [ec2Instance.publicIp],
-    }, { dependsOn: [ec2Instance] });  
-    }); */
+    const scalingDowncloudWatchMetricAlarm = new aws.cloudwatch.MetricAlarm("scalingDowncloudWatchMetricAlarm", {
+        comparisonOperator: "LessThanOrEqualToThreshold",
+        evaluationPeriods: 1,
+        metricName: "CPUUtilization",
+        namespace: "AWS/EC2",
+        period: 60,
+        statistic: "Average",
+        threshold: 3,
+        //treatMissingData: notBreaching,
+        dimensions: {
+            AutoScalingGroupName: autoScalingGroup.name,
+        },
+        alarmDescription: "ec2 cpu utilization",
+        alarmActions: [autoScalingDown.arn],
+    },{dependsOn:autoScalingDown});
 
 
     const selected = aws.route53.getZone({
         name: domainName,
         privateZone: false,
     });
+    
     const createRecord = new aws.route53.Record("createRecord", {
         zoneId: selected.then(selected => selected.zoneId),
         name: domainName,
         type: "A",
-        ttl: 60,
-        records: [ec2Instance.publicIp],
+        aliases: [
+            {
+                name: ec2LoadBalancer.dnsName,
+                zoneId: ec2LoadBalancer.zoneId,
+                evaluateTargetHealth: true,
+            },
+        ],
         tags: {
             Name: `Route53`,
             Type: "public",
-          },
-    }, { dependsOn: [ec2Instance] });
+        },
+    }, { dependsOn: [autoScalingGroup] });
+    
+
 
 
     return {
         vpcId: vpc.id,
         internetGatewayId: internetGateway.id,        
         rdsInstanceId: rdsInstance.id,
-        ec2InstanceId: ec2Instance.id,
+        //ec2InstanceId: ec2Instance.id,
         createdRecord: createRecord.zoneId,
-        instancePublicIp : ec2Instance.publicIp,
+        //instancePublicIp : ec2Instance.publicIp,
     };
 }
 
