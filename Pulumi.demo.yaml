@@ -13,7 +13,7 @@ config:
   app:family: postgres11
   app:instanceType: t2.micro
   app:instanceclass: db.t2.micro
-  app:keyPairName: awsKey-us-east-1
+  app:keyPairName: awsKey-us-east-1-demo
   app:nodePort: "3001"
   app:ownerId: "250820048302"
   app:port: "5432"
