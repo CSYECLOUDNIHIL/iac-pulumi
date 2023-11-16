@@ -365,7 +365,6 @@ async function main() {
             path: "/healthz", 
             port: nodePort,
             protocol: "HTTP",
-            protocol: "HTTP",
             timeout: 10,
             unhealthyThreshold: 2,
             healthyThreshold: 2,
@@ -384,7 +383,7 @@ async function main() {
 
 
 
-    const listener = new aws.lb.Listener("loadBalancerListener", {
+    const loadBalancerListener = new aws.lb.Listener("loadBalancerListener", {
         loadBalancerArn: ec2LoadBalancer.arn,
         port: 80,
         protocol: "HTTP",
@@ -416,7 +415,7 @@ async function main() {
         }
         ,targetGroupArns: [loadBalancerTargetGroup.arn],
         vpcId: vpc.id,
-    },{dependsOn:[listener]});
+    },{dependsOn:[loadBalancerListener]});
 
 
     const autoScalingUp = new aws.autoscaling.Policy("autoScalingUp", {
