@@ -3,28 +3,31 @@ config:
   app:VPCCidrBlock: 10.0.0.0/16
   app:allocatedstorage: "20"
   app:ami: ami-06db4d78cb1d3bbf9
+  app:csvLocation: ./opt/users.csv
   app:databasename: healthz
   app:databaseusername: csye6225
   app:destinationCidrBlock: 0.0.0.0/0
+  app:domainName: "dev.nihiljosephpellissery.me"
   app:engine: postgres
-  app:csvLocation: ./opt/users.csv
   app:engineversion: "11"
   app:family: postgres11
   app:instanceType: t2.micro
   app:instanceclass: db.t2.micro
   app:keyPairName: awsKey-us-east-1
   app:nodePort: "3001"
-  app:rolePolicy: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
   app:ownerId: "250820048302"
-  app:domainName: "dev.nihiljosephpellissery.me"
+  app:port: "5432"
+  app:region: us-east-1
+  app:mailGunApiKey: 5f78e0af35cf0d540afdc4d60676693a-5d2b1caa-2712557e
+  app:rolePolicy: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
   app:statsDPort: "8125"
   app:storagetype: gp2
   app:subnetMaskVar: "24"
-  app:port: "5432"
-  app:region: us-east-1
   aws:profile: dev
   aws:region: us-east-1
+  gcp:project: dev-project-infrastructure
   iac_pulumi:app.databasename: healthz
+  app:mailgunGomainName: "nihiljosephpellissery.me"
   iac_pulumi:mySecretKey:
     secure: v1:/agW0KQ6qliKjQLg:KJDuUwP8lQdSB3GlItWxzzsI9Ygg5qB9OqF2yku5j+688BjlxNwICcf9yY0/DPHF+47thJiVDiodDvn3ugAJP1ZDwNl4b+/wsvOsNR80vBhHUVTIf/pnExeXhDX3nWmr5XVNaNve9PJ7eEcW6QP5u8PrszllK1ND+bO2GtTDYUN3eSu+gYJaihRyD2wyROORzvJSeBwUsk3AUBBcUhPYLwa0Fh3Tk/kTova2322BqRT7A4oR6OnQXQJuPHhnXkQ9S+oDBNaZSPF51nV/OA83GhGqRjuP9IxbOmoi5NncwSCQ9cBPA157LYWGyGBp6/7QF8DXhi/6kUrHQxYk88G7vAJuT0QySiP9B4W7PeHvGj/RV/rymQV4xGqn1DJzVdWmNIcawYUX6Pj7NJZR1TCDKOZVvj1b3dT6HCOUopPAffD6m5dxqz/7Yc0RTwx6kImJ5KW1RO25Zv807xNbZmDFu8B/4fmRT5Xh6s0nodm57m0p11i8DPaZVcg/o9KYnsmVzHJPqntgvYVAXhSF8++u/+QcOmmyplMRxk1JPe8ofmiKM4/yIMu1X0qbT0aWrqQ9fhXSViOUhEgYeAPXEDwMYmO5/C9ZATcMJUezM77jdism+PJXWpPccNJcbP2uqeo7irMA+jZ7Crq/aGNI8pvdc7dE2qngWTTwq+/8FYhUomsnwdMKkoVJr41XlDaw47m+0w0Oj+KaNhxbOEkICAgy2u430ERGaXLyK3dQHzweiIVoJCG3Ga5Lzjk4m+Bl16WTF23xrQ==
   iac_pulumi:dataPassword:
