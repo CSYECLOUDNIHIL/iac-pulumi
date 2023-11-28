@@ -1,10 +1,12 @@
 "use strict";
 const pulumi = require("@pulumi/pulumi");
 const aws = require("@pulumi/aws");
+const gcp = require("@pulumi/gcp");
 const config=  new pulumi.Config("app");
 let publicSubnet = [];
 let privateSubnet = [];
 const ip = config.get("VPCCidrBlock");
+const mailGunApiKey = config.get("mailGunApiKey");
 const nodePort = config.get("nodePort");
 const instanceType = config.get("instanceType");
 const ownerId = config.get("ownerId");
@@ -28,12 +30,193 @@ const awsregion = config.get("region");
 const statsDPort = config.get("statsDPort");
 const rolePolicy = config.get("rolePolicy");
 const subnetMaskVar = config.get("subnetMaskVar");
+const mailgunGomainName = config.get("mailgunGomainName");
+
+
+
 const ipsplit = ip.split('/');
 const networkPart = ipsplit[0].split('.');
 const subnetMask = ipsplit[1];
 
 
 async function main() {
+
+
+    const snsTopic =  new aws.sns.Topic("snsTopic");
+
+    const gcpserviceAccount = new gcp.serviceaccount.Account("gcpserviceAccount", {
+        accountId: "service-account-id",
+        displayName: "Service Account",
+        project: "dev-project-infrastructure"
+    });
+
+    const gcpserviceAccountkey = new gcp.serviceaccount.Key("gcpserviceAccountkey", {
+        serviceAccountId: gcpserviceAccount.accountId,
+        publicKeyType: "TYPE_X509_PEM_FILE",
+    });
+
+    const iamBinding = new gcp.projects.IAMBinding("iamBinding", {
+        project: gcpserviceAccount.project,
+        role: "roles/storage.admin",
+        members: [pulumi.interpolate`serviceAccount:${gcpserviceAccount.email}`],
+    });
+
+    const gcpBucket = new gcp.storage.Bucket("gcpBucket", {
+        name:"nihil-csye6225-002785404",
+        location: "us-east1", 
+        forceDestroy:true,
+        storageClass: "STANDARD",
+        uniformBucketLevelAccess:true,
+    },{dependsOn : iamBinding});
+
+    const lambdaIamRole = new aws.iam.Role("lambdaIamRole", {
+        assumeRolePolicy: JSON.stringify({
+            Version: "2012-10-17",
+            Statement: [{
+                Action: "sts:AssumeRole",
+                Effect: "Allow",
+                Sid: "AssumeRolePolicy", 
+                Principal: {
+                    Service: "lambda.amazonaws.com",
+                },
+            }],
+        }),
+        tags: {
+            Name: `lambdaamRole`,
+            Type: "public",
+          },
+    });
+    
+
+    
+    const lambdaPolicy = new aws.iam.Policy("lambdaPolicy", {
+        policy: {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents",
+                    "lambda:InvokeFunction",
+                ],
+                "Resource": "*"
+            }
+        ]
+        },
+    });
+
+    const SNSPolicy = new aws.iam.Policy("SNSPolicy", {
+        policy: {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                     "sns:Publish",
+                ],
+                "Resource": "*"
+            }
+        ]
+        },
+    });
+
+    const dynamodbPolicy = new aws.iam.Policy("dynamodbPolicy", {
+        policy: {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "dynamodb:GetItem",
+                        "dynamodb:PutItem",
+                        "dynamodb:UpdateItem",
+                        "dynamodb:BatchWriteItem",
+                        "dynamodb:Query",
+                        "dynamodb:Scan",
+                        "dynamodb:DeleteItem"
+                    ],
+                    "Resource": "*"
+                }
+            ]
+        },
+    });
+
+
+    const lambdaRolePolicyAttachment = new aws.iam.RolePolicyAttachment("lambdaRolePolicyAttachment", {
+        policyArn: lambdaPolicy.arn,
+        role: lambdaIamRole.name,
+        tags: {
+            Name: `lambdaRolePolicyAttachment`,
+            Type: "public",
+          },
+    });
+
+    const SNSPolicyAttachment = new aws.iam.RolePolicyAttachment("SNSPolicyAttachment", {
+        role: lambdaIamRole.name,
+        policyArn: SNSPolicy.arn,
+        tags: {
+            Name: `SNSPolicyAttachment`,
+            Type: "public",
+          },
+    },{ dependsOn: [lambdaIamRole] });
+
+
+    const dynamodbPolicyAttachment = new aws.iam.RolePolicyAttachment("dynamodbPolicyAttachment", {
+        policyArn: dynamodbPolicy.arn,
+        role: lambdaIamRole.name,
+        tags: {
+            Name: `dynamodbPolicyAttachment`,
+            Type: "public",
+          },
+    });
+
+    const dynamodb_table = new aws.dynamodb.Table("myTable",{
+    attributes: [
+        {
+            name: "emailId",
+            type: "S",
+        },
+    ],
+    hashKey: "emailId",
+    llingMode: "PAY_PER_REQUEST",
+    readCapacity: 1,
+    writeCapacity: 1
+    });
+
+    const lambdaFunction = new aws.lambda.Function("LambdaFunction", {
+        code: new pulumi.asset.AssetArchive({
+            ".": new pulumi.asset.FileArchive("./lambda-function"),
+        }),
+        role: lambdaIamRole.arn,
+        handler: "lambda-function.handler",
+        runtime: "nodejs14.x", 
+        environment: {
+            variables: {
+                GCP_BUCKET: gcpBucket.name,  
+                GCP_SERVICE_ACCOUNT_KEY: gcpserviceAccountkey.privateKey,
+                AWS_DYNAMODB_TABLE: dynamodb_table.name,
+                MAIL_GUN_API_KEY:mailGunApiKey,
+                MAIL_GUN_DOMOAIN: "nihiljosephpellissery.me",
+            },
+        },
+        timeout: 60,
+    },{ dependsOn: [gcpserviceAccountkey] });
+
+    
+    const lambdaSubscription = new aws.sns.TopicSubscription("lambdaSubscription", {
+        protocol: "lambda",
+        endpoint: lambdaFunction.arn,
+        topic: snsTopic.arn,
+    });
+
+    const permission = new aws.lambda.Permission("myPermission", {
+        action: "lambda:InvokeFunction",
+        function: lambdaFunction.id,
+        principal: "sns.amazonaws.com",
+        sourceArn: snsTopic.arn
+    });   
 
     
     const vpc = new aws.ec2.Vpc("webappVPC", {
@@ -263,12 +446,21 @@ async function main() {
             Name: `CWIamRole`,
             Type: "public",
           },
-    });
+    },{ dependsOn: [lambdaIamRole] });
     
 
     const rolePolicyAttachment = new aws.iam.RolePolicyAttachment("policyAttachment", {
         role: cloudWatchIamRole.name,
         policyArn: rolePolicy,
+        tags: {
+            Name: `CWpolicyAttachment`,
+            Type: "public",
+          },
+    },{ dependsOn: [cloudWatchIamRole] });
+
+    const SNSec2PolicyAttachment = new aws.iam.RolePolicyAttachment("SNSec2PolicyAttachment", {
+        role: cloudWatchIamRole.name,
+        policyArn: SNSPolicy.arn,
         tags: {
             Name: `CWpolicyAttachment`,
             Type: "public",
@@ -321,6 +513,7 @@ async function main() {
     echo "CSV_LOCATION=${csvLocation}" | sudo tee -a .env
     echo "SERVER_PORT=${nodePort}" | sudo tee -a .env
     echo "STATSD_PORT=${statsDPort}" | sudo tee -a .env
+    echo "AWS_SNS_TOPIC=${snsTopic.arn}" | sudo tee -a .env
     sudo systemctl daemon-reload
     sudo systemctl enable healthz-systemd
     sudo systemctl start healthz-systemd
