@@ -18,6 +18,14 @@ config:
   app:ownerId: "250820048302"
   app:port: "5432"
   app:region: us-east-1
+  app:gcpBucketName : nihil-csye6225-002785404
+  app:gcpRegion : us-east1
+  app:lambdaFunctionPath: ./lambda-function.zip
+  app:mailGunDomainName: nihiljosephpellissery.me
+  app:gcpBucketRole : roles/storage.admin
+  app:lambdaFunctionHandlerName : lambda-function.handler
+  app:project: demo-project-infrastructure
+  app:mailGunApiKey: 5f78e0af35cf0d540afdc4d60676693a-5d2b1caa-2712557e
   app:rolePolicy: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
   app:statsDPort: "8125"
   app:storagetype: gp2
