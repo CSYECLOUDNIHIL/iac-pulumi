@@ -24,7 +24,7 @@ config:
   app:mailGunDomainName: nihiljosephpellissery.me
   app:gcpBucketRole : roles/storage.admin
   app:lambdaFunctionHandlerName : lambda-function.handler
-  app:project: demo-project-infrastructure
+  app:project: eco-analog-405920
   app:mailGunApiKey: 5f78e0af35cf0d540afdc4d60676693a-5d2b1caa-2712557e
   app:rolePolicy: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
   app:statsDPort: "8125"
@@ -32,6 +32,7 @@ config:
   app:subnetMaskVar: "24"
   aws:profile: demo
   aws:region: us-east-1
+  gcp:project: eco-analog-405920
   iac_pulumi:app.databasename: healthz
   iac_pulumi:dataPassword:
     secure: v1:Ae2+Z74LBs2PaRwX:TFJh7Rz7Wi8do3iw8gsSlBtLu7M/0w97XMBoUU5P4w==
