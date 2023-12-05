@@ -453,6 +453,8 @@ async function main() {
         internal: false,
         loadBalancerType: "application",
         securityGroups: [loadSecurityGroup.id],
+        sslPolicy: "ELBSecurityPolicy-2016-08",
+        enableHttp2: true,
         subnets: publicSubnet.map(subnet => (subnet.id)),
         enableDeletionProtection: false,
     },{dependsOn:loadBalancerTargetGroup,rdsInstance});
