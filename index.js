@@ -38,7 +38,7 @@ const statsDPort = config.get("statsDPort");
 const rolePolicy = config.get("rolePolicy");
 const subnetMaskVar = config.get("subnetMaskVar");
 const mailgunGomainName = config.get("mailgunGomainName");
-
+const certificateArn = config.get("certificateArn");
 
 
 const ipsplit = ip.split('/');
@@ -410,6 +410,7 @@ async function main() {
     sudo systemctl start amazon-cloudwatch-agent
     `
     const ec2InstanceLaunchTemplate = new aws.ec2.LaunchTemplate("ec2InstanceLaunchTemplate", {
+        name: "ec2InstanceLaunchTemplate",
         imageId: ami.id,
         instanceType: instanceType,
         networkInterfaces: [{
@@ -461,8 +462,9 @@ async function main() {
 
     const loadBalancerListener = new aws.lb.Listener("loadBalancerListener", {
         loadBalancerArn: ec2LoadBalancer.arn,
-        port: 80,
-        protocol: "HTTP",
+        port: 443,
+        protocol: "HTTPS",
+        certificateArn: certificateArn,
         defaultActions: [
             {
                 type: "forward",
@@ -475,7 +477,7 @@ async function main() {
 
     const autoScalingGroup = new aws.autoscaling.Group("autoScalingGroup", {
         //availabilityZones: azs.names,
-        
+        name: "autoScalingGroup",
         desiredCapacity: 1,
         maxSize: 3,
         minSize: 1,

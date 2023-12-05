@@ -29,6 +29,7 @@ config:
   app:rolePolicy: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
   app:statsDPort: "8125"
   app:storagetype: gp2
+  app:certificateArn: arn:aws:acm:us-east-1:501947390360:certificate/4e6b61be-da57-45c6-8b2b-8ccc11f432d1
   app:subnetMaskVar: "24"
   aws:profile: demo
   aws:region: us-east-1
